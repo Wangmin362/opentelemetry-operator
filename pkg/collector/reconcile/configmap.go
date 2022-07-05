@@ -143,7 +143,8 @@ func expectedConfigMaps(ctx context.Context, params Params, expected []corev1.Co
 		existing := &corev1.ConfigMap{}
 		nns := types.NamespacedName{Namespace: desired.Namespace, Name: desired.Name}
 		err := params.Client.Get(ctx, nns, existing)
-		if err != nil && errors.IsNotFound(err) {
+		if err != nil && errors.IsNotFound(err) { // 如果configmap还没有创建
+			// 直接创建configmam
 			if err := params.Client.Create(ctx, &desired); err != nil {
 				if errors.IsAlreadyExists(err) && retry {
 					// let's try again? we probably had multiple updates at one, and now it exists already
@@ -153,6 +154,7 @@ func expectedConfigMaps(ctx context.Context, params Params, expected []corev1.Co
 					}
 
 					// we succeeded in the retry, exit this attempt
+					// fixme 这里我咋觉得应该是continue吧
 					return nil
 				}
 				return fmt.Errorf("failed to create: %w", err)
@@ -189,6 +191,7 @@ func expectedConfigMaps(ctx context.Context, params Params, expected []corev1.Co
 			return fmt.Errorf("failed to apply changes: %w", err)
 		}
 		if configMapChanged(&desired, existing) {
+			// fixme 这里显然应该使用Recorder.Eventf这个API会更加清爽一些
 			params.Recorder.Event(updated, "Normal", "ConfigUpdate ", fmt.Sprintf("OpenTelemetry Config changed - %s/%s", desired.Namespace, desired.Name))
 		}
 

@@ -68,6 +68,7 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 
+	// 获取各个组件的版本，应该是在获取最新版本
 	v := version.Get()
 
 	// add flags related to this operator
@@ -147,6 +148,7 @@ func main() {
 	leaseDuration := time.Second * 137
 	renewDeadline := time.Second * 107
 	retryPeriod := time.Second * 26
+	// 创建manager options，manager用于管理controllers
 	mgrOptions := ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,
@@ -165,12 +167,14 @@ func main() {
 		mgrOptions.NewCache = cache.MultiNamespacedCacheBuilder(strings.Split(watchNamespace, ","))
 	}
 
+	// 创建manager
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOptions)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
+	// 当manager进程收到两次你sigint信号之后，context会被cancel
 	ctx := ctrl.SetupSignalHandler()
 	err = addDependencies(ctx, mgr, cfg, v)
 	if err != nil {
@@ -179,16 +183,18 @@ func main() {
 	}
 
 	if err = controllers.NewReconciler(controllers.Params{
-		Client:   mgr.GetClient(),
-		Log:      ctrl.Log.WithName("controllers").WithName("OpenTelemetryCollector"),
-		Scheme:   mgr.GetScheme(),
-		Config:   cfg,
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("OpenTelemetryCollector"),
+		Scheme: mgr.GetScheme(),
+		Config: cfg,
+		//获取时间记录器，将来通过kubectl get OpenTelemetryCollector -o yaml 的时候可以看到发生的事件
 		Recorder: mgr.GetEventRecorderFor("opentelemetry-operator"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OpenTelemetryCollector")
 		os.Exit(1)
 	}
 
+	// TODO 后面有时间分析下webhook的使用
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&otelv1alpha1.OpenTelemetryCollector{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "OpenTelemetryCollector")
@@ -227,6 +233,8 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
+	// 基于k8s shardInformer的ListAndWatch机制监听感兴趣的资源，manager.start负责把管理的controller启动起来
+	// 每个controller会由自己感兴趣的资源，一旦监听到感兴趣的资源发生变换，controller就会进入reconciler调谐部分
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
@@ -236,6 +244,7 @@ func main() {
 func addDependencies(_ context.Context, mgr ctrl.Manager, cfg config.Config, v version.Version) error {
 	// run the auto-detect mechanism for the configuration
 	err := mgr.Add(manager.RunnableFunc(func(_ context.Context) error {
+		// 这里的自动检测是operator部署的平台是unknown, kubernetes还是openshift
 		return cfg.StartAutoDetect()
 	}))
 	if err != nil {

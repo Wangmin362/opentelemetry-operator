@@ -89,7 +89,9 @@ func New(opts ...Option) Config {
 // StartAutoDetect attempts to automatically detect relevant information for this operator. This will block until the first
 // run is executed and will schedule periodic updates.
 func (c *Config) StartAutoDetect() error {
+	// 这里的自动探测，探测的是当前operator被部署在了什么平台上，opentelemetry-operator支持部署在Kubernetes以及openshift上
 	err := c.AutoDetect()
+	// 定时探测部署operator的平台是否发生改变，若发生改变，那么会回调OnChange()回调函数，该函数由用户传入
 	go c.periodicAutoDetect()
 
 	return err
